@@ -63,18 +63,42 @@ class BaseClass:
         return cls._date
 
 # Calculating asset valuations and allocation
-def get_portfolio(allocation, history, date):
-    date = pd.to_datetime(date, dayfirst=True).tz_localize(None)
-    portfolio = pd.DataFrame()
-    portfolio.index = allocation.index
-    portfolio['Price'] = history.loc[date]
-    portfolio['Share'] = allocation.Share
-    portfolio['Valorisation'] = allocation['Share'] * portfolio['Price']
-    portfolio['Allocation'] = portfolio['Valorisation'] / portfolio['Valorisation'].sum()
-    portfolio['Date'] = date
-    portfolio['Type'] = allocation['Type']
-    portfolio['Account'] = allocation['Account']
-    return portfolio
+class index_table(BaseClass):
+    def __init__(self, history, allocation, date):
+        super().__init__(date)
+        # Assigning input parameters to instance variables
+        self.history = history
+        self.date = self.get_date()
+        self.allocation = allocation
+
+    def compute(self):
+        index = pd.DataFrame()
+        index.index = self.allocation.index
+        index['Price'] = self.history.loc[self.date]
+        index['Share'] = self.allocation['Share']
+        index['Valorisation'] = self.allocation['Share'] * index['Price']
+        index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
+        index['Date'] = self.date
+        index['Type'] = self.allocation['Type']
+        index['Account'] = self.allocation['Account']
+        return index
+    
+    def historization(self):
+        
+    
+    def show(self):
+        display = self.compute()
+        display = display.drop(columns=['Date'])
+        display['Allocation'] = display['Allocation'].apply(lambda x: f"{x * 100:.2f}%")
+
+        with pd.option_context(
+            'display.max_rows', None,
+            'display.max_columns', None,
+            'display.float_format', '{:,.1f}'.format,
+            'display.max_colwidth', None,
+            'display.colheader_justify', 'center'
+        ):
+            print(display)
 
 # Class Composition
 class stats_table(BaseClass):
