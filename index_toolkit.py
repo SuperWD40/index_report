@@ -24,6 +24,7 @@ class BaseClass:
             '10Y': date - pd.Timedelta(days=365 * 10),
         }
 
+
     def get_freq_dict(self):
         return {
             'D': 365,
@@ -35,11 +36,11 @@ class BaseClass:
     def get_date(self): 
         return self.date
 
-    def get_history(self, input_index, input_history, freq='B', range='1Y', by='All'):
+    def get_history(self, input_index, input_history, freq='B', range='1Y', by='All', indexing=False):
         #Index
         index = pd.DataFrame()
         index.index = input_index.index
-        index['Price'] = input_history.loc[self.date]
+        index['Price'] = input_history.iloc[-1]
         index['Share'] = input_index['Share']
         index['Valorisation'] = input_index['Share'] * index['Price']
         index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
@@ -51,8 +52,11 @@ class BaseClass:
         #History
         input_history = input_history.loc[range:]
         input_history = input_history.resample(freq).ffill()
-        if by == 'All':
+        if by == 'All' and indexing == False:
             history = input_history
+        elif by == 'All' and indexing == True:
+            history = 100 * (input_history.pct_change() + 1).cumprod()
+            history.loc[history.index[0]] = 100
         elif by == 'Overall':
             history = (index['Allocation'] * input_history.pct_change()).T.sum()
             history = 100 * (history + 1).cumprod()
@@ -69,12 +73,48 @@ class BaseClass:
                 history = pd.concat([history, by_history], axis=1)
                     
         return history
+    
+    def get_index(self, input_index, input_history):
+        index = pd.DataFrame()
+        index.index = input_index.index
+        index['Price'] = input_history.iloc[-1]
+        index['Share'] = input_index['Share']
+        index['Valorisation'] = input_index['Share'] * index['Price']
+        index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
+        index['Account'] = input_index['Account']
+        index['Type'] = input_index['Type']
+        return index
+    
+class index_table(BaseClass):
+    def __init__(self, index, history):  
+        super().__init__(history.index[-1]) 
+        self.input_index = index
+        self.input_history = history
+
+    def compute(self):
+        index = self.get_index(
+            input_index=self.input_index,
+            input_history=self.input_history
+        )
+
+    def show(self):
+        index = self.compute()
+        index['Allocation'] = index['Allocation'].apply(lambda x: f"{x * 100:.2f}%")
+        with pd.option_context(
+            'display.max_rows', None,
+            'display.max_columns', None,
+            'display.float_format', '{:,.1f}'.format,
+            'display.max_colwidth', None,
+            'display.colheader_justify', 'center'
+        ):
+            print(index)
+
+        return index
 
 # Class Composition
 class stats_table(BaseClass):
-    def __init__(self, history, index, market, riskfree, date):
-        super().__init__(date) 
-        self.date = self.get_date()
+    def __init__(self, index, history, market, riskfree):
+        super().__init__(history.index[-1]) 
         self.range_dict = self.get_range_dict()
         self.freq_dict = self.get_freq_dict() 
 
@@ -83,10 +123,10 @@ class stats_table(BaseClass):
         self.input_market = market
         self.input_riskfree = riskfree
 
-    def stats(self, freq, range, by): 
+    def compute(self, freq, range, by): 
         """Calculating statistics based on frequency and time range"""
         # Fetching historical data and resampling based on frequency and time range
-        df_data = self.get_history(
+        df_history = self.get_history(
             input_index=self.input_index, 
             input_history=self.input_history, 
             freq=freq,
@@ -105,17 +145,17 @@ class stats_table(BaseClass):
 
         # Calculating various statistics for each asset in the data
         df_stats = pd.DataFrame() 
-        for ticker in df_data.columns:
-            history = df_data[ticker]
+        for ticker in df_history.columns:
+            history = df_history[ticker]
             if history.isna().any():
                 # Handling missing values
                 df_stats[ticker] = np.nan  
             else:
                 # Calculating and formatting various statistics
-                df_stats.at['Last price', ticker]       = "{:.1f}".format(history.loc[self.date])
+                df_stats.at['Last price', ticker]       = "{:.1f}".format(history.iloc[-1])
                 df_stats.at['Highest price', ticker]    = "{:.1f}".format(history.max())
                 df_stats.at['Lowest price', ticker]     = "{:.1f}".format(history.min())
-                df_stats.at['Last return', ticker]      = "{:.1f}%".format(history.loc[:self.date].pct_change().iloc[-1] * 100)
+                df_stats.at['Last return', ticker]      = "{:.1f}%".format(history.pct_change().iloc[-1] * 100)
                 df_stats.at['Cumulative return', ticker]= "{:.1f}%".format(((history.iloc[-1] - history.iloc[0]) / history.iloc[0]) * 100)
                 df_stats.at['Avg returns', ticker]      = "{:.1f}%".format(finance.avg_return(history, timeperiod=freq) * 100)
                 df_stats.at['Avg volatility', ticker]   = "{:.1f}%".format(finance.avg_volatility(history, timeperiod=freq) * 100)
@@ -140,10 +180,10 @@ class stats_table(BaseClass):
         """Displaying interactive controls for selecting frequency and time range"""
         # Creating interactive controls for selecting frequency and time range
         controls = widgets.interactive(
-            self.stats,
+            self.compute,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account'], value='All')
+            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account'], value='All'),
         )
 
         # Displaying the interactive controls
@@ -151,33 +191,33 @@ class stats_table(BaseClass):
 
 # Class Comparaison
 class chart_comparison(BaseClass):
-    def __init__(self, history, date):
-        super().__init__(date)
-        # Assigning input parameters to instance variables
-        self.history = history
-        self.date = self.get_date()
+    def __init__(self,index, history):
+        super().__init__(history.index[-1]) 
         self.range_dict = self.get_range_dict()
-        self.freq_dict = self.get_freq_dict()
-        self.range_keys = self.get_range_keys()
-        self.freq_keys = self.get_freq_keys()
+        self.freq_dict = self.get_freq_dict() 
+        self.input_history = history
+        self.input_index = index
     
-    def plot(self, freq, range, indexing=True):
+    def plot(self, freq, range, by='All', indexing=True):
         """Plot data from the DataFrame"""
-        history = self.history
-        history = history.loc[self.range_dict[range]:]
-        history = history.resample(freq).ffill()
-        if indexing:
-            history = finance.indexing(history)
+        history = self.get_history(
+            input_index=self.input_index, 
+            input_history=self.input_history, 
+            freq=freq,
+            range=self.range_dict[range],
+            by=by,
+            indexing=indexing
+        )
         history.plot(figsize=(12,6), title='Components returns comparison')
     
-    def show(self, title="", indexing=True):
+    def show(self, indexing=True):
         """Displaying interactive controls for plotting"""
         controls = widgets.interactive(
             self.plot,
-            title=title,
-            indexing=indexing,
-            freq=widgets.Select(options=self.freq_keys, value=self.freq_keys[0]),
-            range=widgets.Select(options=self.range_keys, value=self.range_keys[0])
+            freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
+            range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
+            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account'], value='All'),
+            indexing=indexing
         )
         display(controls)
 
