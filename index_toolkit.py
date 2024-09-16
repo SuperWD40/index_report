@@ -83,6 +83,7 @@ class BaseClass:
         index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
         index['Account'] = input_index['Account']
         index['Type'] = input_index['Type']
+        index['Industry'] = input_index['Industry']
         return index
     
 class index_table(BaseClass):
@@ -96,20 +97,17 @@ class index_table(BaseClass):
             input_index=self.input_index,
             input_history=self.input_history
         )
+        return index
 
     def show(self):
         index = self.compute()
         index['Allocation'] = index['Allocation'].apply(lambda x: f"{x * 100:.2f}%")
         with pd.option_context(
-            'display.max_rows', None,
-            'display.max_columns', None,
+            'expand_frame_repr', None,
             'display.float_format', '{:,.1f}'.format,
-            'display.max_colwidth', None,
             'display.colheader_justify', 'center'
         ):
             print(index)
-
-        return index
 
 # Class Composition
 class stats_table(BaseClass):
@@ -183,7 +181,7 @@ class stats_table(BaseClass):
             self.compute,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account'], value='All'),
+            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account', 'Industry'], value='All'),
         )
 
         # Displaying the interactive controls
@@ -208,7 +206,19 @@ class chart_comparison(BaseClass):
             by=by,
             indexing=indexing
         )
-        history.plot(figsize=(12,6), title='Components returns comparison')
+
+        ax = history.plot(figsize=(16, 8), title='Components returns comparison')
+        ax.legend().remove()
+
+        for column in history.columns:
+            last_value = history[column].iloc[-1]
+            last_date = history.index[-1]
+            
+            ax.text(last_date, last_value, f'{column}: {last_value:.2f}', 
+                    verticalalignment='center', fontsize=10, 
+                    bbox=dict(facecolor='white', edgecolor='none', pad=2))
+        
+        plt.show()
     
     def show(self, indexing=True):
         """Displaying interactive controls for plotting"""
@@ -216,7 +226,7 @@ class chart_comparison(BaseClass):
             self.plot,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account'], value='All'),
+            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account', 'Industry'], value='All'),
             indexing=indexing
         )
         display(controls)
