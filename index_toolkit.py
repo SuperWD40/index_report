@@ -1,11 +1,9 @@
 import pandas as pd
 import numpy as np
-from mytoolkit.finance import finance
-import scipy.stats as stats
+import finance_toolkit as fin
 import ipywidgets as widgets
 from IPython.display import display
 import matplotlib.pyplot as plt
-import matplotlib.ticker
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -19,15 +17,15 @@ class BaseClass:
             '1W': date - pd.Timedelta(days=7),
             '1M': date - pd.Timedelta(days=30),
             'YTD': pd.Timestamp(year=date.year, month=1, day=1),
-            '1Y': date - pd.Timedelta(days=365),
-            '5Y': date - pd.Timedelta(days=365 * 5),
-            '10Y': date - pd.Timedelta(days=365 * 10),
+            '1Y': date - pd.Timedelta(days=360),
+            '5Y': date - pd.Timedelta(days=360 * 5),
+            '10Y': date - pd.Timedelta(days=360 * 10),
         }
 
 
     def get_freq_dict(self):
         return {
-            'D': 365,
+            'D': 360,
             'B': 255,
             'W': 52,
             'M': 12
@@ -74,17 +72,32 @@ class BaseClass:
                     
         return history
     
-    def get_index(self, input_index, input_history):
+    def get_index(self, input_index, input_history, by='All'):
         index = pd.DataFrame()
         index.index = input_index.index
         index['Price'] = input_history.iloc[-1]
         index['Share'] = input_index['Share']
         index['Valorisation'] = input_index['Share'] * index['Price']
         index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
-        index['Account'] = input_index['Account']
-        index['Type'] = input_index['Type']
-        index['Industry'] = input_index['Industry']
+
+        if by == 'All':
+            pass
+        elif by == 'Overall':
+            overall_index = pd.DataFrame()
+            overall_index.at['Overall', 'Valorisation'] = index['Valorisation'].sum()
+            overall_index.at['Overall', 'Allocation'] = 1
+            overall_index.at['Overall', 'Components'] = index['Valorisation'].count()
+            index = overall_index
+        else:
+            index[by] = input_index[by]
+            index = index.groupby(by)[['Valorisation', 'Allocation']].sum()
+            index['Components'] = input_index.groupby(by)['Share'].count()
+        
         return index
+    
+    def get_by(self):
+        list_by = ['All', 'Overall', 'Type', 'Account', 'Industry']
+        return list_by
     
 class index_table(BaseClass):
     def __init__(self, index, history):  
@@ -92,15 +105,13 @@ class index_table(BaseClass):
         self.input_index = index
         self.input_history = history
 
-    def compute(self):
+    def compute(self, by):
         index = self.get_index(
             input_index=self.input_index,
-            input_history=self.input_history
+            input_history=self.input_history,
+            by=by
         )
-        return index
 
-    def show(self):
-        index = self.compute()
         index['Allocation'] = index['Allocation'].apply(lambda x: f"{x * 100:.2f}%")
         with pd.option_context(
             'expand_frame_repr', None,
@@ -109,13 +120,23 @@ class index_table(BaseClass):
         ):
             print(index)
 
+    def show(self):
+        """Displaying interactive controls for selecting frequency and time range"""
+        # Creating interactive controls for selecting frequency and time range
+        controls = widgets.interactive(
+            self.compute,
+            by=widgets.Select(options=self.get_by(), value='All'),
+        )
+
+        # Displaying the interactive controls
+        display(controls)
+        
 # Class Composition
 class stats_table(BaseClass):
     def __init__(self, index, history, market, riskfree):
         super().__init__(history.index[-1]) 
         self.range_dict = self.get_range_dict()
         self.freq_dict = self.get_freq_dict() 
-
         self.input_index = index
         self.input_history = history
         self.input_market = market
@@ -155,17 +176,16 @@ class stats_table(BaseClass):
                 df_stats.at['Lowest price', ticker]     = "{:.2f}".format(history.min())
                 df_stats.at['Last return', ticker]      = "{:.2f}%".format(history.pct_change().iloc[-1] * 100)
                 df_stats.at['Cumulative return', ticker]= "{:.2f}%".format(((history.iloc[-1] - history.iloc[0]) / history.iloc[0]) * 100)
-                df_stats.at['Avg 1y returns', ticker]      = "{:.2f}%".format(finance.avg_return(history, timeperiod=freq) * 100)
-                df_stats.at['Avg 1y volatility', ticker]   = "{:.2f}%".format(finance.avg_volatility(history, timeperiod=freq) * 100)
-                df_stats.at['Alpha', ticker]            = "{:.2f}%".format(finance.alpha(history, market) * 100)
-                df_stats.at['Beta', ticker]             = "{:.2f}".format(finance.beta(history, market))
-                df_stats.at['Sharpe ratio', ticker]     = "{:.2f}".format(finance.sharpe_ratio(history, riskfree, timeperiod=freq))
-                df_stats.at['Calmar ratio', ticker]     = "{:.2f}".format(finance.calmar_ratio(history, riskfree, timeperiod=freq))
-                df_stats.at['Max drawdown', ticker]     = "{:.2f}%".format(finance.max_drawdown(history) * 100)
+                df_stats.at['Avg 1y returns', ticker]      = "{:.2f}%".format(fin.avg_return(history, timeperiod=freq) * 100)
+                df_stats.at['Avg 1y volatility', ticker]   = "{:.2f}%".format(fin.avg_volatility(history, timeperiod=freq) * 100)
+                df_stats.at['Alpha', ticker]            = "{:.2f}%".format(fin.alpha(history, market) * 100)
+                df_stats.at['Beta', ticker]             = "{:.2f}".format(fin.beta(history, market))
+                df_stats.at['Sharpe ratio', ticker]     = "{:.2f}".format(fin.sharpe_ratio(history, riskfree, timeperiod=freq))
+                df_stats.at['Calmar ratio', ticker]     = "{:.2f}".format(fin.calmar_ratio(history, riskfree, timeperiod=freq))
+                df_stats.at['Max drawdown', ticker]     = "{:.2f}%".format(fin.max_drawdown(history) * 100)
                 #df_stats.at['Skewness', ticker]         = "{:.1f}".format(stats.kurtosis(history))
                 #df_stats.at['Kurtosis', ticker]         = "{:.1f}".format(stats.skew(history))
-                df_stats.at['3% VAR', ticker]           = "{:.2f}%".format(finance.var(history, freq='B', conf_level=0.03) * 100)
-                #df_stats.at['Allocation', ticker]       = "{:.1f}%".format(self.allocation[ticker] * 100)
+                #df_stats.at['3% VAR', ticker]           = "{:.2f}%".format(fin.var(history, freq='B', conf_level=0.03) * 100)
 
         # Displaying the statistics table
         with pd.option_context(
@@ -181,7 +201,7 @@ class stats_table(BaseClass):
             self.compute,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account', 'Industry'], value='All'),
+            by=widgets.Select(options=self.get_by(), value='All'),
         )
 
         # Displaying the interactive controls
@@ -226,66 +246,8 @@ class chart_comparison(BaseClass):
             self.plot,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=['All', 'Overall', 'Type', 'Account', 'Industry'], value='All'),
+            by=widgets.Select(options=self.get_by(), value='All'),
             indexing=indexing
         )
-        display(controls)
-
-class top_n_flop(BaseClass):
-    def __init__(self, history, date):
-        super().__init__(date)
-        # Assigning input parameters to instance variables
-        self.date = pd.to_datetime(date, dayfirst=True).tz_localize(None)
-        self.history = history
-        self.date = self.get_date()
-        self.range_dict = self.get_range_dict()
-        self.range_keys = self.get_range_keys()
-    
-    def plot(self, range, n_stock): 
-        df = self.history.resample('D').ffill()
-        df = (df.loc[self.date] - df.loc[self.range_dict[range]]) / df.loc[self.range_dict[range]]
-        df = df.dropna()
-
-        df_first = (df.sort_values().tail(n_stock) * 100).round(2)
-        df_last = (df.sort_values().head(n_stock) * 100).round(2)
-
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        df_first.sort_values(ascending=True).plot(kind='barh', color='g', ax=ax2)
-        df_last.sort_values(ascending=False).plot(kind='barh', color='r', ax=ax1)
-
-        # Représenter à droite l'axe y du graphique 2
-        ax2.yaxis.set_ticks_position('right')
-
-        ax1.set_xlim([df_last.min()*1.2, 0])
-        ax2.set_xlim([0, df_first.max()*1.2])
-
-        # Afficher les variations directement sur le graphique
-        for i, v in enumerate(df_last.sort_values(ascending=False)):
-            ax1.text(df_last.min()*0.2+v, i, f"{v:.2f}%", color='r')
-        for i, v in enumerate(df_first):
-            ax2.text(df_first.min()*0.05+v, i, f"{v:.2f}%", color='g')
-
-        # Afficher l'échelle x uniquement en entier
-        ax1.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
-        ax2.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
-
-        # Insérer un titre
-        fig.suptitle('Componentd top and flop', y=0.95)
-
-        # Ajuster l'écart entre les deux graphiques
-        fig.subplots_adjust(wspace=0.05)
-
-        plt.show()
-        
-    def show(self):
-        """Displaying interactive controls for selecting frequency and time range"""
-        # Creating interactive controls for selecting frequency and time range
-        controls = widgets.interactive(
-            self.plot,
-            range=widgets.Select(options=self.range_keys, value=self.range_keys[0]),
-            n_stock=widgets.IntText(value=5, description='N stocks:', disabled=False)
-        )
-
-        # Displaying the interactive controls
         display(controls)
 
