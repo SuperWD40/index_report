@@ -33,21 +33,25 @@ class BaseClass:
 
     def get_date(self): 
         return self.date
-
-    def get_history(self, input_index, input_history, freq='B', range='1Y', by='All', indexing=False):
-        #Index
+    
+    def get_index(self, input_index, input_history, by='All'):
         index = pd.DataFrame()
         index.index = input_index.index
         index['Price'] = input_history.iloc[-1]
         index['Share'] = input_index['Share']
         index['Valorisation'] = input_index['Share'] * index['Price']
         index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
+
         if by not in ['All', 'Overall']:
             index[by] = input_index[by]
             by_index = index.groupby(by)['Allocation'].transform('sum')
             index['Allocation'] = index['Allocation'] / by_index
 
-        #History
+        return index
+
+    def get_history(self, input_index, input_history, freq='B', range='1Y', by='All', indexing=False):
+        index = self.get_index(input_index=input_index, input_history=input_history, by=by)
+
         input_history = input_history.loc[range:]
         input_history = input_history.resample(freq).ffill()
         if by == 'All' and indexing == False:
@@ -72,45 +76,38 @@ class BaseClass:
                     
         return history
     
-    def get_index(self, input_index, input_history, by='All'):
-        index = pd.DataFrame()
-        index.index = input_index.index
-        index['Price'] = input_history.iloc[-1]
-        index['Share'] = input_index['Share']
-        index['Valorisation'] = input_index['Share'] * index['Price']
-        index['Allocation'] = index['Valorisation'] / index['Valorisation'].sum()
+    def get_by_list(self, index):
+        by_list = ['All', 'Overall']
+        by_list += [e for e in index.columns.to_list() if e not in ('Ticker', 'Component', 'Isin', 'Share')]
 
-        if by == 'All':
-            pass
-        elif by == 'Overall':
-            overall_index = pd.DataFrame()
-            overall_index.at['Overall', 'Valorisation'] = index['Valorisation'].sum()
-            overall_index.at['Overall', 'Allocation'] = 1
-            overall_index.at['Overall', 'Components'] = index['Valorisation'].count()
-            index = overall_index
-        else:
-            index[by] = input_index[by]
-            index = index.groupby(by)[['Valorisation', 'Allocation']].sum()
-            index['Components'] = input_index.groupby(by)['Share'].count()
-        
-        return index
-    
-    def get_by(self):
-        list_by = ['All', 'Overall', 'Type', 'Account', 'Industry']
-        return list_by
+        return by_list
     
 class index_table(BaseClass):
     def __init__(self, index, history):  
         super().__init__(history.index[-1]) 
         self.input_index = index
         self.input_history = history
+        self.by_list = self.get_by_list(index)
 
     def compute(self, by):
-        index = self.get_index(
+        input_index = self.get_index(
             input_index=self.input_index,
             input_history=self.input_history,
             by=by
         )
+        input_index['Allocation'] = input_index['Valorisation'] / input_index['Valorisation'].sum()
+        if by == 'All':
+            index = input_index
+        elif by == 'Overall':
+            index = pd.DataFrame()
+            index.at['Overall', 'Valorisation'] = input_index['Valorisation'].sum()
+            index.at['Overall', 'Allocation'] = 1
+            index.at['Overall', 'Components'] = input_index['Valorisation'].count()
+        else:
+            index = pd.DataFrame(index=input_index[by].unique())
+            index['Valorisation'] = input_index.groupby(by)[['Valorisation']].sum()
+            index['Allocation'] = input_index.groupby(by)[['Allocation']].sum()
+            index['Components'] = input_index.groupby(by)['Share'].count()
 
         index['Allocation'] = index['Allocation'].apply(lambda x: f"{x * 100:.2f}%")
         with pd.option_context(
@@ -125,7 +122,7 @@ class index_table(BaseClass):
         # Creating interactive controls for selecting frequency and time range
         controls = widgets.interactive(
             self.compute,
-            by=widgets.Select(options=self.get_by(), value='All'),
+            by=widgets.Select(options=self.by_list, value='All'),
         )
 
         # Displaying the interactive controls
@@ -141,6 +138,7 @@ class stats_table(BaseClass):
         self.input_history = history
         self.input_market = market
         self.input_riskfree = riskfree
+        self.by_list = self.get_by_list(index)
 
     def compute(self, freq, range, by): 
         """Calculating statistics based on frequency and time range"""
@@ -201,7 +199,7 @@ class stats_table(BaseClass):
             self.compute,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=self.get_by(), value='All'),
+            by=widgets.Select(options=self.get_by_list(self.input_index), value='All'),
         )
 
         # Displaying the interactive controls
@@ -215,6 +213,7 @@ class chart_comparison(BaseClass):
         self.freq_dict = self.get_freq_dict() 
         self.input_history = history
         self.input_index = index
+        self.by_list = self.get_by_list(index)
     
     def plot(self, freq, range, by='All', indexing=True):
         """Plot data from the DataFrame"""
@@ -246,7 +245,7 @@ class chart_comparison(BaseClass):
             self.plot,
             freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),
             range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),
-            by=widgets.Select(options=self.get_by(), value='All'),
+            by=widgets.Select(options=self.get_by_list(self.input_index), value='All'),
             indexing=indexing
         )
         display(controls)
