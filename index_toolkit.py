@@ -27,10 +27,12 @@ class BaseClass:
         return {
             '1W': date - pd.Timedelta(days=7),                  # 1 Week ago
             '1M': date - pd.Timedelta(days=30),                 # 1 Month ago
-            'YTD': pd.Timestamp(year=date.year, month=1, day=1),# Year-to-date
+            '3M': date - pd.Timedelta(days=30*3),               # 3 Month ago
+            '6M': date - pd.Timedelta(days=30*6),               # 6 Month ago
             '1Y': date - pd.Timedelta(days=360),                # 1 Year ago
             '5Y': date - pd.Timedelta(days=360 * 5),            # 5 Years ago
             '10Y': date - pd.Timedelta(days=360 * 10),          # 10 Years ago
+            'YTD': pd.Timestamp(year=date.year, month=1, day=1) # Year-to-date
         }
 
     def get_freq_dict(self):
@@ -446,7 +448,7 @@ class return_table(BaseClass):
         self.input_history = history  
         self.market = market  
 
-    def plot(self, freq='B', range='1M', by='All', comparing=True):
+    def plot(self, freq='M', range='YTD', by='All', comparing=True):
         """Plots the correlation matrix of the returns for the index components."""
         # If comparing is True, use the input market data
         if comparing:
@@ -469,10 +471,10 @@ class return_table(BaseClass):
 
         # Set up the heatmap for visualization
         plt.figure(figsize=(16, len(returns.T)))  # Set figure size
-        sns.heatmap(returns, annot=True, cmap='RdYlGn', fmt='.2f', linewidths=0.5, center=0, cbar=False)  
+        sns.heatmap(returns*100, annot=True, cmap='RdYlGn', fmt='.2f', linewidths=0.5, center=0, cbar=False)  
         # Draw the heatmap with annotations, color map, and formatting options
 
-        plt.title("Component's returns")  
+        plt.title("Component's returns (in %)")  
 
         plt.tight_layout()  
         plt.show() 
@@ -482,8 +484,8 @@ class return_table(BaseClass):
         # Create interactive widget for selecting frequency, range, grouping, and comparison
         controls = widgets.interactive(
             self.plot,
-            freq=widgets.Select(options=list(self.freq_dict.keys()), value='B'),  
-            range=widgets.Select(options=list(self.range_dict.keys()), value='1M'),  
+            freq=widgets.Select(options=list(self.freq_dict.keys()), value='W'),  
+            range=widgets.Select(options=list(self.range_dict.keys()), value='YTD'),  
             by=widgets.Select(options=self.by_list, value='All'),  
             comparing=widgets.Checkbox(value=comparing)  
         )
