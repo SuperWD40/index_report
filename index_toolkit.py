@@ -178,6 +178,7 @@ class risk_chart(BaseClass):
         """Plots a scatter plot of 1-year average returns vs volatility, sized by valuation."""
         # Compute the necessary statistics (returns, volatility, valuation) based on selected options
         df = self.compute(freq=freq, range=range, by=by)
+        df['Valorisation'] = df['Valorisation'] / df['Valorisation'].sum() * 100000
 
         # Set up the figure size for the plot
         plt.figure(figsize=(16, 8))
