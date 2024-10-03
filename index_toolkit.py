@@ -434,7 +434,7 @@ class chart_comparison(BaseClass):
 
 
 
-class corr_table(BaseClass):
+class return_table(BaseClass):
     def __init__(self, index, history, market):
         """Initializes the corr_table class with an index, historical data, and market data."""
         super().__init__(history.index[-1])  
@@ -462,14 +462,16 @@ class corr_table(BaseClass):
         )
 
         # Calculate the correlation matrix based on percentage changes in historical data
-        corr_matrix = history.pct_change().corr()  
+        returns = history.pct_change().T
+        returns.columns = returns.columns.strftime('%Y-%m-%d')
+        returns = returns.dropna(axis=1)
 
         # Set up the heatmap for visualization
-        plt.figure(figsize=(10, 8))  # Set figure size
-        sns.heatmap(corr_matrix, annot=True, cmap='RdYlGn', fmt='.2f', linewidths=0.5, center=0)  
+        plt.figure(figsize=(16, len(returns.T)))  # Set figure size
+        sns.heatmap(returns, annot=True, cmap='RdYlGn', fmt='.2f', linewidths=0.5, center=0, cbar=False)  
         # Draw the heatmap with annotations, color map, and formatting options
 
-        plt.title("Correlation Matrix on Component's returns")  
+        plt.title("Component's returns")  
 
         plt.tight_layout()  
         plt.show() 
